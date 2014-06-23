@@ -126,5 +126,7 @@ class Command(NoArgsCommand):
             stmt = "ALTER TABLE %s ADD COLUMN %s" % (qn(db_table), ' '.join(field_sql))
             if not f.null:
                 stmt += " " + style.SQL_KEYWORD('NOT NULL')
+                if f.default is not None:
+                    stmt += " " + style.SQL_KEYWORD('DEFAULT') + " %s" % f.default
             sql_output.append(stmt + ";")
         return sql_output
