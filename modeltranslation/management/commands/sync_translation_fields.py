@@ -70,6 +70,8 @@ class Command(NoArgsCommand):
             model_full_name = '%s.%s' % (model._meta.app_label, model._meta.module_name)
             opts = translator.get_options_for_model(model)
             for field_name, fields in opts.local_fields.items():
+                if not fields:
+                    continue
                 # Take `db_column` attribute into account
                 field = list(fields)[0].translated_field
                 column_name = field.db_column if field.db_column else field_name
