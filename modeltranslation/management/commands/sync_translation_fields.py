@@ -81,8 +81,10 @@ class Command(BaseCommand):
             model_full_name = '%s.%s' % (model._meta.app_label, model_name)
             opts = translator.get_options_for_model(model)
             for field_name, fields in opts.local_fields.items():
+                if not fields:
+                    continue
                 # Take `db_column` attribute into account
-                field = list(fields)[0]
+                field = list(fields)[0].translated_field
                 column_name = field.db_column if field.db_column else field_name
                 missing_langs = list(self.get_missing_languages(column_name, db_table))
                 if missing_langs:
@@ -138,5 +140,7 @@ class Command(BaseCommand):
             stmt = "ALTER TABLE %s ADD COLUMN %s" % (qn(db_table), ' '.join(field_sql))
             if not f.null:
                 stmt += " " + style.SQL_KEYWORD('NOT NULL')
+                if f.default is not None:
+                    stmt += " " + style.SQL_KEYWORD('DEFAULT') + " %s" % f.default
             sql_output.append(stmt + ";")
         return sql_output
