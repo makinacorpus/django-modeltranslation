@@ -35,7 +35,7 @@ def get_version(version=None):
         mapping = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}
         sub = mapping[version[3]] + str(version[4])
 
-    return str(main + sub)
+    return str(main + sub + '+geotrek1')
 
 
 def get_git_changeset():
