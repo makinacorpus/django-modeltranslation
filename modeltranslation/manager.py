@@ -231,7 +231,9 @@ class MultilingualQuerySet(models.query.QuerySet):
                 kwargs.setdefault('fields_to_del', self.fields_to_del)
             if hasattr(self, 'original_fields'):
                 kwargs.setdefault('original_fields', self.original_fields)
-            return super(MultilingualQuerySet, self)._clone(**kwargs)
+            cloned = super(MultilingualQuerySet, self)._clone()
+            cloned.__dict__.update(kwargs)
+            return cloned
     else:
         def _clone(self, klass=None, *args, **kwargs):
             if klass is not None and not issubclass(klass, MultilingualQuerySet):
@@ -241,7 +243,12 @@ class MultilingualQuerySet(models.query.QuerySet):
                 klass = NewClass
             kwargs.setdefault('_rewrite', self._rewrite)
             kwargs.setdefault('_populate', self._populate)
-            return super(MultilingualQuerySet, self)._clone(klass, *args, **kwargs)
+            cloned = super(MultilingualQuerySet, self)._clone()
+            cloned.__dict__.update(kwargs)
+            if klass is not None:
+                cloned.__class__ = klass
+
+            return cloned
 
     # This method was not present in django-linguo
     def rewrite(self, mode=True):
@@ -377,6 +384,18 @@ class MultilingualQuerySet(models.query.QuerySet):
         for key in field_names:
             new_args.append(rewrite_order_lookup_key(self.model, key))
         return super(MultilingualQuerySet, self).order_by(*new_args)
+
+    def distinct(self, *field_names):
+        """
+        Change translatable field names in an ``distinct`` argument
+        to translation fields for the current language.
+        """
+        if not self._rewrite:
+            return super(MultilingualQuerySet, self).distinct(*field_names)
+        new_args = []
+        for key in field_names:
+            new_args.append(rewrite_order_lookup_key(self.model, key))
+        return super(MultilingualQuerySet, self).distinct(*new_args)
 
     def update(self, **kwargs):
         if not self._rewrite:

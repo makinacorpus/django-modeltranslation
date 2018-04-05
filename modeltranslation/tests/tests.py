@@ -121,10 +121,8 @@ class ModeltranslationTransactionTestBase(TransactionTestCase):
                    else dummy_context_mgr())
             with mgr:
                 # 0. Render initial migration of auth
-                from django.db import connections, DEFAULT_DB_ALIAS
                 if MIGRATIONS:
-                    call_command('makemigrations', 'auth', verbosity=2, interactive=False,
-                                 database=connections[DEFAULT_DB_ALIAS].alias)
+                    call_command('makemigrations', 'auth', verbosity=2, interactive=False)
 
                 # 1. Reload translation in case USE_I18N was False
                 from django.utils import translation as dj_trans
@@ -165,13 +163,10 @@ class ModeltranslationTransactionTestBase(TransactionTestCase):
 
                 # 5. makemigrations (``migrate=False`` in case of south)
                 if MIGRATIONS:
-                    call_command('makemigrations', 'auth', verbosity=2, interactive=False,
-                                 database=connections[DEFAULT_DB_ALIAS].alias)
+                    call_command('makemigrations', 'auth', verbosity=2, interactive=False)
 
                 # 6. Syncdb (``migrate=False`` in case of south)
-                cmd = 'migrate' if MIGRATE_CMD else 'syncdb'
-                call_command(cmd, verbosity=0, migrate=False, interactive=False, run_syncdb=True,
-                             database=connections[DEFAULT_DB_ALIAS].alias, load_initial_data=False)
+                call_command('migrate', verbosity=0, interactive=False, run_syncdb=True)
 
                 # 7. clean migrations
                 if MIGRATIONS:
@@ -699,7 +694,6 @@ class FallbackTests(ModeltranslationTestBase):
 
 
 class FileFieldsTest(ModeltranslationTestBase):
-
     def tearDown(self):
         if default_storage.exists('modeltranslation_tests'):
             # With FileSystemStorage uploading files creates a new directory,
@@ -2847,7 +2841,7 @@ class TestManager(ModeltranslationTestBase):
         non-nullable fields.
         """
         with auto_populate('required'):
-            call_command('loaddata', 'fixture.json', verbosity=0, commit=False)
+            call_command('loaddata', 'fixture.json', verbosity=0)
             m = models.TestModel.objects.get()
             self.assertEqual(m.title_en, 'foo')
             self.assertEqual(m.title_de, 'foo')
@@ -2858,14 +2852,14 @@ class TestManager(ModeltranslationTestBase):
         """
         Test that the loaddata command takes new option.
         """
-        call_command('loaddata', 'fixture.json', verbosity=0, commit=False, populate='required')
+        call_command('loaddata', 'fixture.json', verbosity=0, populate='required')
         m = models.TestModel.objects.get()
         self.assertEqual(m.title_en, 'foo')
         self.assertEqual(m.title_de, 'foo')
         self.assertEqual(m.text_en, 'bar')
         self.assertEqual(m.text_de, None)
 
-        call_command('loaddata', 'fixture.json', verbosity=0, commit=False, populate='all')
+        call_command('loaddata', 'fixture.json', verbosity=0, populate='all')
         m = models.TestModel.objects.get()
         self.assertEqual(m.title_en, 'foo')
         self.assertEqual(m.title_de, 'foo')
@@ -2874,7 +2868,7 @@ class TestManager(ModeltranslationTestBase):
 
         # Test if option overrides current context
         with auto_populate('all'):
-            call_command('loaddata', 'fixture.json', verbosity=0, commit=False, populate=False)
+            call_command('loaddata', 'fixture.json', verbosity=0, populate=False)
             m = models.TestModel.objects.get()
             self.assertEqual(m.title_en, 'foo')
             self.assertEqual(m.title_de, None)
@@ -3007,6 +3001,51 @@ class TestManager(ModeltranslationTestBase):
         # Check if fields assigned in constructor hasn't been ignored.
         self.assertEqual(inst.titlea, 'title_a')
         self.assertEqual(inst.titleb, 'title_b')
+
+    def test_distinct(self):
+        """Check that field names are rewritten in distinct keys."""
+        manager = models.ManagerTestModel.objects
+        manager.create(
+            title_en='title_1_en', title_de='title_1_de',
+            description_en='desc_1_en', description_de='desc_1_de')
+        manager.create(
+            title_en='title_1_en', title_de='title_1_de',
+            description_en='desc_2_en', description_de='desc_2_de')
+        manager.create(
+            title_en='title_2_en', title_de='title_2_de',
+            description_en='desc_1_en', description_de='desc_1_de')
+        manager.create(
+            title_en='title_2_en', title_de='title_2_de',
+            description_en='desc_2_en', description_de='desc_2_de')
+
+        # Without field arguments to distinct() all fields are used to determine
+        # distinctness, therefore when only looking at a subset of fields in the
+        # queryset it can appear that there are duplicates (the titles in this case)
+        titles_for_en = tuple(m.title for m in manager.order_by('title').distinct())
+        with override('de'):
+            titles_for_de = tuple(m.title for m in manager.order_by('title').distinct())
+
+        self.assertEqual(titles_for_en, ('title_1_en', 'title_1_en', 'title_2_en', 'title_2_en'))
+        self.assertEqual(titles_for_de, ('title_1_de', 'title_1_de', 'title_2_de', 'title_2_de'))
+
+        # On PostgreSQL only, distinct() can have field arguments (*fields) to specify which fields
+        # the distinct applies to (this generates a DISTINCT ON (*fields) sql expression).
+        # NB: DISTINCT ON expressions must be accompanied by an order_by() that starts with the
+        # same fields in the same order
+        if (django_settings.DATABASES['default']['ENGINE'] ==
+                'django.db.backends.postgresql_psycopg2'):
+            titles_for_en = tuple(
+                (m.title, m.description) for m in manager.order_by(
+                    'title', 'description').distinct('title'))
+            with override('de'):
+                titles_for_de = tuple(
+                    (m.title, m.description) for m in manager.order_by(
+                        'title', 'description').distinct('title'))
+
+            self.assertEqual(
+                titles_for_en, (('title_1_en', 'desc_1_en'), ('title_2_en', 'desc_1_en')))
+            self.assertEqual(
+                titles_for_de, (('title_1_de', 'desc_1_de'), ('title_2_de', 'desc_1_de')))
 
 
 class TranslationModelFormTest(ModeltranslationTestBase):
